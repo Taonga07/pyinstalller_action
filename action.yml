@@ -1,0 +1,84 @@
+name: PyInstaller Action
+author: Thomas Wiesenthal-Saunders
+description: Github action that runs PyInstaller on multiple operating systems
+
+inputs:
+  path:
+    description: Path to the Python file
+    required: true
+  name:
+    description: Name of the Python application
+    required: false
+    default: ${{ env.GITHUB_REPOSITORY_NAME }}
+  console:
+    description: Whether to show the console
+    required: false
+    default: false
+  splash-path:
+    description: Path to the splash image (png)
+    required: false
+    default: "NONE"
+  icon-path:
+    description: Path to the icon file (ico)
+    required: false
+    default: "NONE"
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install tk
+
+      - name: Build executable
+        run: |
+          pyinstaller ${{ inputs.path }}
+            --name "${{ inputs.name }}"
+            ${{ if inputs.console == 'false' }}
+              --noconsole
+            ${{ endif }}
+            ${{ if inputs.splash-path != 'NONE' }}
+              --splash "${{ inputs.splash-path }}"
+            ${{ endif }}
+            ${{ if inputs.icon-path != 'NONE' }}
+              --icon "${{ inputs.icon-path }}"
+            ${{ endif }}
+            --onefile
+            
+      - name: Check if build failed
+        run: exit ${{ job.status }}
+
+  upload:
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+
+    steps:
+      - name: Download and delete previous artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: "${{ matrix.os }}-executable"
+          path: dist/${{ inputs.name }}
+          if-no-files-found: continue
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: "${{ matrix.os }}-executable"
+          path: dist/${{ inputs.name }}
+        if: always() && ${{ success() }}
